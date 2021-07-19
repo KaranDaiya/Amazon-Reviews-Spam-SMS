@@ -1,0 +1,118 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r Step 2: exploring the data}
+sms_raw <- read.csv("/Users/karan/Downloads/sms_spam.csv", stringsAsFactors = FALSE)
+str(sms_raw)
+```
+```{r since it is the categorical value, convert type to factors }
+sms_raw$type <- factor(sms_raw$type)
+str(sms_raw$type)
+table(sms_raw$type)
+```
+```{r Data preparation: Processing text data}
+install.packages("tm")
+library(tm)
+```
+```{r Creating a corpus}
+sms_corpus <- Corpus(VectorSource(sms_raw$text))
+print(sms_corpus)
+```
+```{r tm_map() provides a method for transforming a tm corpus and here I am removing numbers and converting the letters to lowercase}
+corpus_clean <- tm_map(sms_corpus, tolower)
+corpus_clean <- tm_map(corpus_clean, removeNumbers)
+```
+```{r Removing filler words, punctuations and white space}
+corpus_clean <- tm_map(corpus_clean, removeWords, stopwords())
+corpus_clean <- tm_map(corpus_clean, removePunctuation)
+corpus_clean <- tm_map(corpus_clean, stripWhitespace)
+```
+```{r Creating a sparse matrix}
+sms_dtm <- DocumentTermMatrix(corpus_clean)
+View(sms_dtm)
+```
+```{r Creating training and test dataset: 75 percent for training and 25 percent for testing}
+sms_raw_train <- sms_raw[1:4169, ]
+sms_raw_test <- sms_raw[4170:5559, ]
+sms_dtm_train <- sms_dtm[1:4169, ]
+sms_dtm_test <- sms_dtm[4170:5559, ]
+sms_corpus_train <- corpus_clean[1:4169]
+sms_corpus_test <- corpus_clean[4170:5559]
+```
+```{r Comparing the spam proportion}
+prop.table(table(sms_raw_train$type))
+prop.table(table(sms_raw_test$type))
+```
+```{r}
+install.packages("wordcloud")
+library(wordcloud)
+```
+```{r Creating a word cloud}
+wordcloud(sms_corpus_train, min.freq = 40, random.order = FALSE)
+```
+```{r Creating subsets and then making word cloud}
+spam <- subset(sms_raw_train, type == "spam")
+ham <- subset(sms_raw_train, type == "ham")
+wordcloud(spam$text, max.words = 40, scale = c(3, 0.5)) 
+wordcloud(ham$text, max.words = 40, scale = c(3, 0.5))
+View(spam)
+```
+```{r Creating indicator features for frequent world}
+findFreqTerms(sms_dtm_train, 5)
+sms_dict <- c(findFreqTerms(sms_dtm_train, 5))
+```
+```{r limit our training and test matrixes to only the words in the preceding dictionary}
+sms_train <- DocumentTermMatrix(sms_corpus_train, list(dictionary = sms_dict))
+sms_test <- DocumentTermMatrix(sms_corpus_test, list(dictionary = sms_dict))
+```
+```{r Converting counts to factors}
+convert_counts<-function(x){
+x<-ifelse(x>0,1,0)
+x<-factor(x,levels=c(0,1),labels=c("No","Yes"))
+return(x)
+}
+```
+```{r applying convert_counts to each of the columns in sparse matrix}
+sms_train <- apply(sms_train, MARGIN = 2, convert_counts) 
+sms_test <- apply(sms_test, MARGIN = 2, convert_counts)
+```
+```{r Step 3: Training a model on the data}
+install.packages("e1071") 
+library(e1071)
+```
+```{r building our model on the sms_train matrix}
+sms_classifier <- naiveBayes(sms_train, sms_raw_train$type)
+```
+```{r Step 4: evaluating model performance}
+sms_test_pred <- predict(sms_classifier, sms_test)
+```
+```{r comparing the predicted values and the actual values using CrossTable }
+library(gmodels)
+CrossTable(sms_test_pred, sms_raw_test$type,
+prop.chisq = FALSE, prop.t = FALSE, dnn = c('predicted', 'actual'))
+```
+```{r Step 5: Improving model performance: building a naive bayes model as before, but this time setting laplace to 0.1:}
+sms_classifier2 <- naiveBayes(sms_train, sms_raw_train$type,
+laplace = 0.1)
+sms_test_pred2 <- predict(sms_classifier2, sms_test)
+CrossTable(sms_test_pred2, sms_raw_test$type, prop.chisq = FALSE, prop.t = FALSE, prop.r = FALSE, dnn = c('predicted', 'actual'))
+```
+
+
+
+
+
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+

@@ -1,0 +1,110 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r Step 2: exploring the data}
+review <- read.csv("/Users/karan/Downloads/amazon_reviews.csv", stringsAsFactors = FALSE)
+
+```
+```{r}
+review$Type <- factor(review$Type, levels = c(0, 1), labels = c("Negative","Positive"))
+```
+```{r since it is the categorical value, convert type to factors }
+review$Type <- factor(review$Type)
+str(review$Type)
+table(review$Type)
+```
+```{r Data preparation: Processing text data}
+library(tm)
+```
+```{r Creating a corpus}
+review_corpus <- Corpus(VectorSource(review$Reviews))
+print(review_corpus)
+```
+```{r tm_map() provides a method for transforming a tm corpus and here I am removing numbers and converting the letters to lowercase}
+review_clean <- tm_map(review_corpus, tolower)
+review_clean <- tm_map(review_clean, removeNumbers)
+```
+```{r Removing filler words, punctuations and white space}
+review_clean <- tm_map(review_clean, removeWords, stopwords())
+review_clean <- tm_map(review_clean, removePunctuation)
+review_clean <- tm_map(review_clean, stripWhitespace)
+```
+```{r Creating a sparse matrix}
+review_dtm <- DocumentTermMatrix(review_clean)
+View(review_dtm)
+str(review)
+```
+```{r Creating training and test dataset: 75 percent for training and 25 percent for testing}
+review_raw_train <- review[1:749, ]
+review_raw_test <- review[750:1000, ]
+review_dtm_train <- review_dtm[1:749, ]
+review_dtm_test <- review_dtm[750:1000, ]
+review_corpus_train <- review_clean[1:749]
+review_corpus_test <- review_clean[750:1000]
+```
+```{r Comparing the spam proportion}
+prop.table(table(review_raw_train$Type))
+prop.table(table(review_raw_test$Type))
+```
+```{r}
+library(wordcloud)
+```
+```{r Creating a word cloud}
+wordcloud(review_corpus_train, min.freq = 30, random.order = FALSE)
+```
+```{r Creating subsets and then making word cloud}
+positive <- subset(review_raw_train, Type == "Positive")
+negative <- subset(review_raw_train, Type == "Negative")
+wordcloud(positive$Reviews, max.words = 40, scale = c(3, 0.5)) 
+wordcloud(negative$Reviews, max.words = 40, scale = c(3, 0.5))
+```
+```{r Creating indicator features for frequent world}
+findFreqTerms(review_dtm_train, 5)
+review_dict <- c(findFreqTerms(review_dtm_train, 5))
+```
+```{r limit our training and test matrixes to only the words in the preceding dictionary}
+review_train <- DocumentTermMatrix(review_corpus_train, list(dictionary = review_dict))
+review_test <- DocumentTermMatrix(review_corpus_test, list(dictionary = review_dict))
+```
+```{r Converting counts to factors}
+convert_counts<-function(y){
+y<-ifelse(y>0,1,0)
+y<-factor(y,levels=c(0,1),labels=c("No","Yes"))
+return(y)
+}
+```
+```{r applying convert_counts to each of the columns in sparse matrix}
+review_train <- apply(review_train, MARGIN = 2, convert_counts) 
+review_test <- apply(review_test, MARGIN = 2, convert_counts)
+```
+```{r Step 3: Training a model on the data}
+library(e1071)
+```
+```{r building our model on the review_train matrix}
+review_classifier <- naiveBayes(review_train, review_raw_train$Type)
+```
+```{r Step 4: evaluating model performance}
+review_test_pred <- predict(review_classifier, review_test)
+```
+```{r comparing the predicted values and the actual values using CrossTable }
+library(gmodels)
+CrossTable(review_test_pred, review_raw_test$Type,
+prop.chisq = FALSE, prop.t = FALSE, dnn = c('predicted', 'actual'))
+```
+```{r Step 5: Improving model performance: building a naive bayes model as before, but this time setting laplace to 0.1:}
+review_classifier2 <- naiveBayes(review_train, review_raw_train$Type,
+laplace = 0.1)
+review_test_pred2 <- predict(review_classifier2, review_test)
+CrossTable(review_test_pred2, review_raw_test$Type, prop.chisq = FALSE, prop.t = FALSE, prop.r = FALSE, dnn = c('predicted', 'actual'))
+```
+
+
+
+
+
